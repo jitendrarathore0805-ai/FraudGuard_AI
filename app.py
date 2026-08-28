@@ -31,21 +31,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# ============================================================
-# PATHS
-# ============================================================
-
 ROOT = Path(__file__).resolve().parent
 MODEL_DIR = ROOT / "models"
 
 MODEL_PATH = MODEL_DIR / "best_model.pkl"
 META_PATH = MODEL_DIR / "metadata.json"
-
-
-# ============================================================
-# DATABASE
-# ============================================================
 
 try:
     init_db()
@@ -55,21 +45,11 @@ except Exception as e:
     st.stop()
 
 
-# ============================================================
-# CUSTOM CSS
-# NOTE:
-# HTML is used ONLY for CSS injection.
-# UI itself uses native Streamlit components.
-# ============================================================
-
 st.markdown(
     """
     <style>
 
-    /* =====================================================
-       GLOBAL
-       ===================================================== */
-
+ 
     @import url(
         'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
     );
@@ -91,10 +71,6 @@ st.markdown(
     }
 
 
-    /* =====================================================
-       SIDEBAR
-       ===================================================== */
-
     section[data-testid="stSidebar"] {
         background: #FFFFFF;
         border-right: 1px solid #E6EBF2;
@@ -103,11 +79,6 @@ st.markdown(
     section[data-testid="stSidebar"] > div {
         padding-top: 1.2rem;
     }
-
-
-    /* =====================================================
-       BUTTONS
-       ===================================================== */
 
     .stButton > button,
     .stFormSubmitButton > button {
@@ -124,10 +95,6 @@ st.markdown(
     }
 
 
-    /* =====================================================
-       INPUTS
-       ===================================================== */
-
     .stTextInput input,
     .stNumberInput input,
     .stSelectbox div[data-baseweb="select"],
@@ -135,10 +102,6 @@ st.markdown(
         border-radius: 10px;
     }
 
-
-    /* =====================================================
-       LOGIN
-       ===================================================== */
 
     .login-space {
         height: 45px;
@@ -166,10 +129,6 @@ st.markdown(
     }
 
 
-    /* =====================================================
-       BRAND
-       ===================================================== */
-
     .brand-title {
         font-size: 21px;
         font-weight: 800;
@@ -181,10 +140,6 @@ st.markdown(
         font-size: 11px;
     }
 
-
-    /* =====================================================
-       PAGE
-       ===================================================== */
 
     .page-heading {
         font-size: 31px;
@@ -200,19 +155,11 @@ st.markdown(
     }
 
 
-    /* =====================================================
-       SMALL TEXT
-       ===================================================== */
-
     .muted {
         color: #64748B;
         font-size: 13px;
     }
 
-
-    /* =====================================================
-       STATUS BOXES
-       ===================================================== */
 
     .high-risk {
         padding: 20px;
@@ -238,11 +185,6 @@ st.markdown(
         text-align: center;
     }
 
-
-    /* =====================================================
-       FOOTER
-       ===================================================== */
-
     #MainMenu {
         visibility: hidden;
     }
@@ -260,10 +202,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# ============================================================
-# LOAD MODEL
-# ============================================================
 
 if not MODEL_PATH.exists():
     st.error(
@@ -302,21 +240,12 @@ except Exception as e:
     st.exception(e)
     st.stop()
 
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
 if "user" not in st.session_state:
     st.session_state.user = None
 
 if "result" not in st.session_state:
     st.session_state.result = None
 
-
-# ============================================================
-# GOOGLE AUTH
-# ============================================================
 
 def google_user_available():
 
@@ -380,10 +309,6 @@ def sync_google_user():
         return None
 
 
-# ============================================================
-# AUTH SCREEN
-# ============================================================
-
 def show_auth_screen():
 
     st.markdown(
@@ -424,12 +349,8 @@ def show_auth_screen():
 
             st.write("")
 
-            # ------------------------------------------------
-            # GOOGLE
-            # ------------------------------------------------
-
             if st.button(
-                "🔵  Continue with Google",
+                " 🌐 Continue with Google",
                 use_container_width=True,
                 key="google_login_button"
             ):
@@ -460,10 +381,6 @@ def show_auth_screen():
                     "Create account"
                 ]
             )
-
-            # ================================================
-            # LOCAL LOGIN
-            # ================================================
 
             with login_tab:
 
@@ -532,10 +449,7 @@ def show_auth_screen():
 
                             st.exception(e)
 
-            # ================================================
-            # SIGN UP
-            # ================================================
-
+           
             with signup_tab:
 
                 with st.form(
@@ -647,13 +561,9 @@ def show_auth_screen():
             st.write("")
 
             st.caption(
-                "🔒 Your transaction data is isolated to your account."
+                " Your transaction data is isolated to your account."
             )
 
-
-# ============================================================
-# GOOGLE SESSION CHECK
-# ============================================================
 
 if st.session_state.user is None:
 
@@ -671,17 +581,8 @@ if st.session_state.user is None:
     st.stop()
 
 
-# ============================================================
-# CURRENT USER
-# ============================================================
-
 user = st.session_state.user
 
-
-# ============================================================
-# SIDEBAR
-# NO RAW HTML UI
-# ============================================================
 
 with st.sidebar:
 
@@ -768,11 +669,6 @@ with st.sidebar:
 
             st.rerun()
 
-
-# ============================================================
-# USER DATA
-# ============================================================
-
 try:
 
     stats_data = stats(
@@ -799,9 +695,6 @@ except Exception:
     hist = []
 
 
-# ============================================================
-# PAGE HEADER
-# ============================================================
 
 st.markdown(
     '<div class="page-heading">'
@@ -816,11 +709,6 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True
 )
-
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
 
 def predict_transaction(data):
 
@@ -913,7 +801,7 @@ def show_result(
         if prediction == 1:
 
             st.error(
-                "⚠️ HIGH RISK"
+                " HIGH RISK"
             )
 
             st.write(
@@ -931,10 +819,6 @@ def show_result(
                 "This transaction appears to be normal."
             )
 
-
-# ============================================================
-# DASHBOARD
-# ============================================================
 
 if page == "Dashboard":
 
@@ -999,10 +883,6 @@ if page == "Dashboard":
         )
 
     st.write("")
-
-    # ========================================================
-    # QUICK CHECK
-    # ========================================================
 
     with st.container(border=True):
 
@@ -1157,10 +1037,6 @@ if page == "Dashboard":
 
                 st.exception(e)
 
-    # ========================================================
-    # LAST RESULT
-    # ========================================================
-
     if st.session_state.result:
 
         probability, prediction = (
@@ -1172,10 +1048,6 @@ if page == "Dashboard":
             prediction
         )
 
-
-# ============================================================
-# ANALYZE TRANSACTION
-# ============================================================
 
 elif page == "Analyze Transaction":
 
@@ -1388,14 +1260,11 @@ elif page == "Analyze Transaction":
                 st.exception(e)
 
 
-# ============================================================
-# TRANSACTION HISTORY
-# ============================================================
 
 elif page == "Transaction History":
 
     st.subheader(
-        "📋 My Transaction History"
+        " My Transaction History"
     )
 
     if hist:
@@ -1477,10 +1346,6 @@ elif page == "Transaction History":
             "Analyze your first transaction."
         )
 
-
-# ============================================================
-# PROFILE
-# ============================================================
 
 elif page == "My Profile":
 
@@ -1645,10 +1510,6 @@ elif page == "My Profile":
                     st.exception(e)
 
 
-# ============================================================
-# ANALYTICS
-# ============================================================
-
 elif page == "Analytics":
 
     st.subheader(
@@ -1770,11 +1631,6 @@ elif page == "Analytics":
                     fig,
                     use_container_width=True,
                 )
-
-
-# ============================================================
-# MODEL PERFORMANCE
-# ============================================================
 
 elif page == "Model Performance":
 
@@ -1917,14 +1773,10 @@ elif page == "Model Performance":
             )
 
 
-# ============================================================
-# ABOUT
-# ============================================================
-
 elif page == "About":
 
     st.subheader(
-        "ℹ️ About FraudGuard AI"
+        " About FraudGuard AI"
     )
 
     with st.container(border=True):
