@@ -1,112 +1,2017 @@
 from pathlib import Path
-import json,joblib,pandas as pd,streamlit as st,plotly.express as px,plotly.graph_objects as go
-from database import init_db,register,login,add,history,stats,update
-ROOT=Path(__file__).resolve().parent; M=ROOT/"models"; init_db()
-st.set_page_config(page_title="FraudGuard AI",page_icon="🛡️",layout="wide")
-st.markdown("""<style>
-.stApp{background:#F6F8FC} [data-testid=stSidebar]{background:#fff;border-right:1px solid #E7ECF3}
-.brand{display:flex;gap:12px;align-items:center;padding:8px 3px 22px}.logo{width:44px;height:44px;border-radius:13px;background:#2563EB;color:#fff;display:flex;align-items:center;justify-content:center;font-size:23px}
-.title{font-size:30px;font-weight:800;color:#0F172A}.sub{color:#64748B;margin-bottom:20px}.card,.kpi{background:#fff;border:1px solid #E7ECF3;border-radius:16px;padding:19px;box-shadow:0 5px 18px rgba(15,23,42,.04)}.klabel{color:#64748B;font-size:12px}.kvalue{font-size:25px;font-weight:800;margin-top:4px}.high{background:#FFF1F2;color:#DC2626;border:1px solid #FECDD3;border-radius:12px;padding:12px;text-align:center;font-weight:800}.low{background:#ECFDF5;color:#059669;border:1px solid #A7F3D0;border-radius:12px;padding:12px;text-align:center;font-weight:800}
-</style>""",unsafe_allow_html=True)
+import json
 
-if not (M/"best_model.pkl").exists():
- st.error("Model missing. Run: python train.py"); st.stop()
-model=joblib.load(M/"best_model.pkl"); meta=json.loads((M/"metadata.json").read_text())
+import joblib
+import pandas as pd
+import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
 
-if "user" not in st.session_state: st.session_state.user=None
-if not st.session_state.user:
- st.markdown("<div style='text-align:center;margin:55px 0 20px'><div style='font-size:48px'>🛡️</div><div style='font-size:32px;font-weight:800;color:#172554'>FraudGuard AI</div><div style='color:#64748B'>Secure Transaction Intelligence</div></div>",unsafe_allow_html=True)
- a,b=st.tabs(["Sign in","Create account"])
- with a:
-  with st.form("login"):
-   u=st.text_input("Username or email"); p=st.text_input("Password",type="password"); ok=st.form_submit_button("Sign in",type="primary",use_container_width=True)
-  if ok:
-   x=login(u,p)
-   if x: st.session_state.user=x; st.rerun()
-   else: st.error("Invalid credentials.")
- with b:
-  with st.form("signup"):
-   n=st.text_input("Full name"); u=st.text_input("Username"); e=st.text_input("Email"); p=st.text_input("Password",type="password"); q=st.text_input("Confirm password",type="password"); ok=st.form_submit_button("Create account",use_container_width=True)
-  if ok:
-   if len(p)<6: st.error("Password must be at least 6 characters.")
-   elif p!=q: st.error("Passwords do not match.")
-   elif register(u,e,p,n): st.success("Account created. Sign in now.")
-   else: st.error("Username/email already exists.")
- st.stop()
+from database import (
+    init_db,
+    register,
+    login,
+    google_login_or_register,
+    add,
+    history,
+    stats,
+    update,
+)
 
-user=st.session_state.user
+
+# ============================================================
+# PAGE CONFIG
+# IMPORTANT: This must come before other Streamlit commands
+# ============================================================
+
+st.set_page_config(
+    page_title="FraudGuard AI",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ============================================================
+# PATHS
+# ============================================================
+
+ROOT = Path(__file__).resolve().parent
+MODEL_DIR = ROOT / "models"
+
+MODEL_PATH = MODEL_DIR / "best_model.pkl"
+META_PATH = MODEL_DIR / "metadata.json"
+
+
+# ============================================================
+# DATABASE
+# ============================================================
+
+try:
+    init_db()
+except Exception as e:
+    st.error("Database initialization failed.")
+    st.exception(e)
+    st.stop()
+
+
+# ============================================================
+# CUSTOM CSS
+# NOTE:
+# HTML is used ONLY for CSS injection.
+# UI itself uses native Streamlit components.
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* =====================================================
+       GLOBAL
+       ===================================================== */
+
+    @import url(
+        'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
+    );
+
+    html,
+    body,
+    [class*="css"] {
+        font-family: "Inter", sans-serif;
+    }
+
+    .stApp {
+        background:
+            radial-gradient(
+                circle at 10% 0%,
+                rgba(37, 99, 235, 0.07),
+                transparent 30%
+            ),
+            #F7F9FC;
+    }
+
+
+    /* =====================================================
+       SIDEBAR
+       ===================================================== */
+
+    section[data-testid="stSidebar"] {
+        background: #FFFFFF;
+        border-right: 1px solid #E6EBF2;
+    }
+
+    section[data-testid="stSidebar"] > div {
+        padding-top: 1.2rem;
+    }
+
+
+    /* =====================================================
+       BUTTONS
+       ===================================================== */
+
+    .stButton > button,
+    .stFormSubmitButton > button {
+        border-radius: 10px;
+        min-height: 42px;
+        font-weight: 600;
+        border: 1px solid #D9E1EC;
+        transition: all 0.2s ease;
+    }
+
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {
+        transform: translateY(-1px);
+    }
+
+
+    /* =====================================================
+       INPUTS
+       ===================================================== */
+
+    .stTextInput input,
+    .stNumberInput input,
+    .stSelectbox div[data-baseweb="select"],
+    .stDateInput input {
+        border-radius: 10px;
+    }
+
+
+    /* =====================================================
+       LOGIN
+       ===================================================== */
+
+    .login-space {
+        height: 45px;
+    }
+
+    .login-icon {
+        font-size: 58px;
+        text-align: center;
+        margin-bottom: 5px;
+    }
+
+    .login-heading {
+        text-align: center;
+        font-size: 34px;
+        font-weight: 800;
+        color: #172554;
+        margin-bottom: 3px;
+    }
+
+    .login-subheading {
+        text-align: center;
+        color: #64748B;
+        font-size: 14px;
+        margin-bottom: 25px;
+    }
+
+
+    /* =====================================================
+       BRAND
+       ===================================================== */
+
+    .brand-title {
+        font-size: 21px;
+        font-weight: 800;
+        color: #172554;
+    }
+
+    .brand-subtitle {
+        color: #64748B;
+        font-size: 11px;
+    }
+
+
+    /* =====================================================
+       PAGE
+       ===================================================== */
+
+    .page-heading {
+        font-size: 31px;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.03em;
+    }
+
+    .page-description {
+        color: #64748B;
+        margin-top: -8px;
+        margin-bottom: 24px;
+    }
+
+
+    /* =====================================================
+       SMALL TEXT
+       ===================================================== */
+
+    .muted {
+        color: #64748B;
+        font-size: 13px;
+    }
+
+
+    /* =====================================================
+       STATUS BOXES
+       ===================================================== */
+
+    .high-risk {
+        padding: 20px;
+        border-radius: 15px;
+        background: #FFF1F2;
+        border: 1px solid #FECDD3;
+        text-align: center;
+    }
+
+    .medium-risk {
+        padding: 20px;
+        border-radius: 15px;
+        background: #FFFBEB;
+        border: 1px solid #FDE68A;
+        text-align: center;
+    }
+
+    .low-risk {
+        padding: 20px;
+        border-radius: 15px;
+        background: #ECFDF5;
+        border: 1px solid #A7F3D0;
+        text-align: center;
+    }
+
+
+    /* =====================================================
+       FOOTER
+       ===================================================== */
+
+    #MainMenu {
+        visibility: hidden;
+    }
+
+    footer {
+        visibility: hidden;
+    }
+
+    header {
+        background: transparent !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
+if not MODEL_PATH.exists():
+    st.error(
+        f"Model file not found:\n\n{MODEL_PATH}"
+    )
+    st.info(
+        "Please make sure best_model.pkl exists inside the models folder."
+    )
+    st.stop()
+
+
+if not META_PATH.exists():
+    st.error(
+        f"Metadata file not found:\n\n{META_PATH}"
+    )
+    st.info(
+        "Please make sure metadata.json exists inside the models folder."
+    )
+    st.stop()
+
+
+try:
+
+    model = joblib.load(MODEL_PATH)
+
+    with open(
+        META_PATH,
+        "r",
+        encoding="utf-8"
+    ) as f:
+        meta = json.load(f)
+
+except Exception as e:
+
+    st.error("Unable to load the fraud detection model.")
+    st.exception(e)
+    st.stop()
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+
+# ============================================================
+# GOOGLE AUTH
+# ============================================================
+
+def google_user_available():
+
+    try:
+        return bool(st.user.is_logged_in)
+
+    except Exception:
+        return False
+
+
+def sync_google_user():
+
+    if not google_user_available():
+        return None
+
+    try:
+
+        google_data = st.user.to_dict()
+
+        email = google_data.get(
+            "email",
+            ""
+        )
+
+        name = google_data.get(
+            "name",
+            ""
+        )
+
+        picture = google_data.get(
+            "picture",
+            ""
+        )
+
+        google_sub = google_data.get(
+            "sub",
+            ""
+        )
+
+        if not email or not google_sub:
+            return None
+
+        user = google_login_or_register(
+            google_sub=google_sub,
+            email=email,
+            name=name,
+            picture=picture,
+        )
+
+        return user
+
+    except Exception as e:
+
+        st.error(
+            "Google authentication succeeded, "
+            "but the user could not be synchronized."
+        )
+
+        st.exception(e)
+
+        return None
+
+
+# ============================================================
+# AUTH SCREEN
+# ============================================================
+
+def show_auth_screen():
+
+    st.markdown(
+        '<div class="login-space"></div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="login-icon">🛡️</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="login-heading">FraudGuard AI</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="login-subheading">'
+        'Secure Transaction Intelligence'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    left, center, right = st.columns(
+        [1, 2, 1]
+    )
+
+    with center:
+
+        with st.container(border=True):
+
+            st.subheader("Welcome back")
+
+            st.caption(
+                "Sign in to monitor and analyze transactions."
+            )
+
+            st.write("")
+
+            # ------------------------------------------------
+            # GOOGLE
+            # ------------------------------------------------
+
+            if st.button(
+                "🔵  Continue with Google",
+                use_container_width=True,
+                key="google_login_button"
+            ):
+
+                try:
+
+                    st.login()
+
+                except Exception as e:
+
+                    st.error(
+                        "Google Sign-In could not be started."
+                    )
+
+                    st.exception(e)
+
+            st.write("")
+
+            st.divider()
+
+            st.caption(
+                "Or continue with your FraudGuard account"
+            )
+
+            login_tab, signup_tab = st.tabs(
+                [
+                    "Sign in",
+                    "Create account"
+                ]
+            )
+
+            # ================================================
+            # LOCAL LOGIN
+            # ================================================
+
+            with login_tab:
+
+                with st.form(
+                    "local_login_form"
+                ):
+
+                    identifier = st.text_input(
+                        "Username or email",
+                        placeholder="you@example.com",
+                    )
+
+                    password = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Enter your password",
+                    )
+
+                    submitted = st.form_submit_button(
+                        "Sign in",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if submitted:
+
+                    if not identifier.strip():
+
+                        st.warning(
+                            "Please enter your username or email."
+                        )
+
+                    elif not password:
+
+                        st.warning(
+                            "Please enter your password."
+                        )
+
+                    else:
+
+                        try:
+
+                            user = login(
+                                identifier.strip(),
+                                password
+                            )
+
+                            if user:
+
+                                st.session_state.user = user
+                                st.session_state.result = None
+
+                                st.rerun()
+
+                            else:
+
+                                st.error(
+                                    "Invalid username/email or password."
+                                )
+
+                        except Exception as e:
+
+                            st.error(
+                                "Login failed."
+                            )
+
+                            st.exception(e)
+
+            # ================================================
+            # SIGN UP
+            # ================================================
+
+            with signup_tab:
+
+                with st.form(
+                    "signup_form"
+                ):
+
+                    full_name = st.text_input(
+                        "Full name",
+                        placeholder="Jitendra Rathore",
+                    )
+
+                    username = st.text_input(
+                        "Username",
+                        placeholder="jitendra123",
+                    )
+
+                    email = st.text_input(
+                        "Email",
+                        placeholder="you@example.com",
+                    )
+
+                    password = st.text_input(
+                        "Password",
+                        type="password",
+                    )
+
+                    confirm_password = st.text_input(
+                        "Confirm password",
+                        type="password",
+                    )
+
+                    submitted = st.form_submit_button(
+                        "Create account",
+                        use_container_width=True,
+                    )
+
+                if submitted:
+
+                    full_name = full_name.strip()
+                    username = username.strip()
+                    email = email.strip()
+
+                    if not full_name:
+
+                        st.warning(
+                            "Please enter your full name."
+                        )
+
+                    elif not username:
+
+                        st.warning(
+                            "Please enter a username."
+                        )
+
+                    elif not email:
+
+                        st.warning(
+                            "Please enter your email."
+                        )
+
+                    elif len(password) < 6:
+
+                        st.warning(
+                            "Password must contain at least 6 characters."
+                        )
+
+                    elif password != confirm_password:
+
+                        st.error(
+                            "Passwords do not match."
+                        )
+
+                    else:
+
+                        try:
+
+                            created = register(
+                                username,
+                                email,
+                                password,
+                                full_name,
+                            )
+
+                            if created:
+
+                                st.success(
+                                    "Account created successfully!"
+                                )
+
+                                st.info(
+                                    "Open the Sign in tab and "
+                                    "login with your account."
+                                )
+
+                            else:
+
+                                st.error(
+                                    "Username or email already exists."
+                                )
+
+                        except Exception as e:
+
+                            st.error(
+                                "Account creation failed."
+                            )
+
+                            st.exception(e)
+
+            st.write("")
+
+            st.caption(
+                "🔒 Your transaction data is isolated to your account."
+            )
+
+
+# ============================================================
+# GOOGLE SESSION CHECK
+# ============================================================
+
+if st.session_state.user is None:
+
+    google_user = sync_google_user()
+
+    if google_user:
+
+        st.session_state.user = google_user
+        st.session_state.result = None
+
+        st.rerun()
+
+    show_auth_screen()
+
+    st.stop()
+
+
+# ============================================================
+# CURRENT USER
+# ============================================================
+
+user = st.session_state.user
+
+
+# ============================================================
+# SIDEBAR
+# NO RAW HTML UI
+# ============================================================
+
 with st.sidebar:
- st.markdown(f"<div class='brand'><div class='logo'>🛡</div><div><b style='font-size:20px;color:#172554'>FRAUDGUARD AI</b><div style='color:#64748B;font-size:11px'>Transaction Intelligence</div></div></div>",unsafe_allow_html=True)
- st.info(f"👋 {user['full_name'] or user['username']}\n\n{user['email']}")
- page=st.radio("Navigation",["Dashboard","Analyze Transaction","Transaction History","My Profile","Analytics","Model Performance","About"],label_visibility="collapsed")
- if st.button("Log out",use_container_width=True): st.session_state.user=None; st.rerun()
 
-st.markdown("<div class='title'>Credit Card Fraud Intelligence</div><div class='sub'>Smart transaction monitoring with explainable machine learning</div>",unsafe_allow_html=True)
-s=stats(user["id"]); hist=history(user["id"])
-if page=="Dashboard":
- c1,c2,c3,c4=st.columns(4)
- for c,label,val in zip([c1,c2,c3,c4],["My Transactions","Fraud Alerts","Average Risk","Model"],[f"{s['total']:,}",f"{s['fraud']:,}",f"{s['risk']*100:.1f}%",meta["best_model"]]):
-  c.markdown(f"<div class='kpi'><div class='klabel'>{label}</div><div class='kvalue'>{val}</div></div>",unsafe_allow_html=True)
- st.write("")
- st.markdown("<div class='card'><b>Quick Transaction Check</b><br><span style='color:#64748B;font-size:12px'>No V1–V28 fields. Only meaningful information.</span></div>",unsafe_allow_html=True)
- with st.form("quick"):
-  a,b,c,d=st.columns(4)
-  amount=a.number_input("Amount (₹)",1.0,500000.0,2500.0); avg=b.number_input("30-day average (₹)",1.0,500000.0,1500.0)
-  merchant=c.selectbox("Merchant",["Grocery","Fuel","Dining","Shopping","Electronics","Travel","Gaming","Cash"]); tx=d.selectbox("Type",["POS","Online","Contactless","ATM","Mobile"])
-  a,b,c,d=st.columns(4); hour=a.slider("Hour",0,23,14); intl=b.selectbox("International",["No","Yes"]); card=c.selectbox("Card present",["Yes","No"]); velocity=d.number_input("Transactions last hour",0,50,1)
-  ok=st.form_submit_button("🔎 Analyze Transaction",type="primary",use_container_width=True)
- if ok:
-  data=dict(amount=amount,hour=hour,merchant_category=merchant,transaction_type=tx,location_risk=.25,device_trust=.8,international=int(intl=="Yes"),card_present=int(card=="Yes"),distance_km=5.,velocity_1h=velocity,avg_amount_30d=avg,account_age_days=800,failed_attempts_24h=0,previous_fraud_count=0)
-  p=float(model.predict_proba(pd.DataFrame([data]))[0,1]); pred=int(p>=meta["threshold"]); add(user["id"],data,p,pred); st.session_state.result=(p,pred); st.success("Analyzed and saved to your history.")
- if "result" in st.session_state:
-  p,pred=st.session_state.result; a,b=st.columns(2)
-  with a: st.metric("Fraud Probability",f"{p*100:.2f}%")
-  with b: st.markdown("<div class='high'>⚠ HIGH RISK — FRAUD</div>" if pred else "<div class='low'>✓ LOW RISK — NORMAL</div>",unsafe_allow_html=True)
+    st.markdown(
+        "## 🛡️ FraudGuard AI"
+    )
 
-elif page=="Analyze Transaction":
- st.markdown("### Analyze Transaction")
- with st.form("full"):
-  a,b,c,d=st.columns(4)
-  amount=a.number_input("Amount (₹)",1.,500000.,2500.); avg=a.number_input("Your 30-day average (₹)",1.,500000.,1500.)
-  merchant=b.selectbox("Merchant category",["Grocery","Fuel","Dining","Shopping","Electronics","Travel","Gaming","Cash"]); tx=b.selectbox("Transaction type",["POS","Online","Contactless","ATM","Mobile"])
-  hour=c.slider("Hour",0,23,14); location=c.slider("Location risk",0.,1.,.2); device=c.slider("Device trust",0.,1.,.85)
-  intl=d.selectbox("International",["No","Yes"]); card=d.selectbox("Card present",["Yes","No"]); distance=d.number_input("Distance from usual location (km)",0.,5000.,5.); velocity=d.number_input("Transactions last hour",0,50,1)
-  age=a.number_input("Account age (days)",1,10000,800); failed=b.number_input("Failed attempts in 24h",0,30,0); prev=c.number_input("Previous fraud alerts",0,50,0)
-  ok=st.form_submit_button("🛡️ Check Fraud Risk",type="primary",use_container_width=True)
- if ok:
-  data=dict(amount=amount,hour=hour,merchant_category=merchant,transaction_type=tx,location_risk=location,device_trust=device,international=int(intl=="Yes"),card_present=int(card=="Yes"),distance_km=distance,velocity_1h=velocity,avg_amount_30d=avg,account_age_days=age,failed_attempts_24h=failed,previous_fraud_count=prev)
-  p=float(model.predict_proba(pd.DataFrame([data]))[0,1]); pred=int(p>=meta["threshold"]); add(user["id"],data,p,pred)
-  st.metric("Fraud Probability",f"{p*100:.2f}%"); st.markdown("<div class='high'>⚠ HIGH RISK — FRAUD</div>" if pred else "<div class='low'>✓ LOW RISK — NORMAL</div>",unsafe_allow_html=True)
+    st.caption(
+        "Transaction Intelligence"
+    )
 
-elif page=="Transaction History":
- st.markdown("### My Transaction History")
- if hist:
-  h=pd.DataFrame(hist); h["Status"]=h.prediction.map({0:"✓ Normal",1:"⚠ Fraud"}); h["Risk"]=h.probability.map(lambda x:f"{x*100:.2f}%")
-  st.dataframe(h[["id","created_at","amount","merchant_category","transaction_type","Risk","Status"]],use_container_width=True,hide_index=True)
-  st.download_button("Download my history CSV",h.to_csv(index=False),"my_transactions.csv")
- else: st.info("No transactions yet.")
+    st.divider()
 
-elif page=="My Profile":
- st.markdown("### My Profile")
- with st.form("profile"):
-  n=st.text_input("Full name",user["full_name"] or ""); e=st.text_input("Email",user["email"]); st.text_input("Username",user["username"],disabled=True); ok=st.form_submit_button("Save profile",type="primary")
- if ok and update(user["id"],n,e): st.session_state.user["full_name"]=n; st.session_state.user["email"]=e; st.success("Profile updated.")
+    user_name = (
+        user.get("full_name")
+        or user.get("username")
+        or "User"
+    )
 
-elif page=="Analytics":
- st.markdown("### Personal Analytics")
- if hist:
-  h=pd.DataFrame(hist); a,b=st.columns(2)
-  with a: st.plotly_chart(px.histogram(h,x="probability",nbins=20,title="My Risk Distribution"),use_container_width=True)
-  with b: st.plotly_chart(px.bar(h.groupby("merchant_category",as_index=False).probability.mean(),x="merchant_category",y="probability",title="Average Risk by Merchant"),use_container_width=True)
- else: st.info("Analyze transactions to populate analytics.")
+    user_email = user.get(
+        "email",
+        ""
+    )
 
-elif page=="Model Performance":
- st.markdown("### Model Performance")
- rows=[{"Model":n,**r} for n,r in meta["models"].items()]; st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
- tm=meta["test_metrics"]; a,b,c,d,e=st.columns(5)
- for col,label,val in zip([a,b,c,d,e],["PR-AUC","ROC-AUC","Precision","Recall","F1"],[tm["pr_auc"],tm["roc_auc"],tm["precision"],tm["recall"],tm["f1"]]): col.metric(label,f"{val:.4f}")
- st.caption(f"Best model: {meta['best_model']} | threshold: {meta['threshold']:.3f}")
+    st.write(
+        f"👤 **{user_name}**"
+    )
 
-else:
- st.markdown("### About FraudGuard AI")
- st.markdown(f"<div class='card'><b>Human-readable fraud detection</b><br><br>This version intentionally does not ask users for V1–V28. Those are anonymized dataset features. The project uses a synthetic, human-readable transaction dataset for a coherent demo workflow.<br><br><b>ML:</b> Logistic Regression + Random Forest + XGBoost<br><b>Database:</b> SQLite<br><b>Authentication:</b> bcrypt-hashed local accounts<br><b>Best model:</b> {meta['best_model']}</div>",unsafe_allow_html=True)
+    if user_email:
+
+        st.caption(
+            user_email
+        )
+
+    st.divider()
+
+    page = st.radio(
+        "Navigation",
+        [
+            "Dashboard",
+            "Analyze Transaction",
+            "Transaction History",
+            "My Profile",
+            "Analytics",
+            "Model Performance",
+            "About",
+        ],
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    auth_provider = user.get(
+        "auth_provider",
+        "local"
+    )
+
+    if auth_provider == "google":
+
+        if st.button(
+            "↪ Sign out",
+            use_container_width=True,
+            key="google_logout"
+        ):
+
+            st.session_state.user = None
+            st.session_state.result = None
+
+            try:
+                st.logout()
+            except Exception:
+                st.rerun()
+
+    else:
+
+        if st.button(
+            "↪ Log out",
+            use_container_width=True,
+            key="local_logout"
+        ):
+
+            st.session_state.user = None
+            st.session_state.result = None
+
+            st.rerun()
+
+
+# ============================================================
+# USER DATA
+# ============================================================
+
+try:
+
+    stats_data = stats(
+        user["id"]
+    )
+
+except Exception:
+
+    stats_data = {
+        "total": 0,
+        "fraud": 0,
+        "risk": 0,
+    }
+
+
+try:
+
+    hist = history(
+        user["id"]
+    )
+
+except Exception:
+
+    hist = []
+
+
+# ============================================================
+# PAGE HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="page-heading">'
+    'Credit Card Fraud Intelligence'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="page-description">'
+    'Smart transaction monitoring powered by explainable machine learning'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def predict_transaction(data):
+
+    try:
+
+        dataframe = pd.DataFrame(
+            [data]
+        )
+
+        probability = float(
+            model.predict_proba(
+                dataframe
+            )[0, 1]
+        )
+
+        threshold = float(
+            meta.get(
+                "threshold",
+                0.5
+            )
+        )
+
+        prediction = int(
+            probability >= threshold
+        )
+
+        return probability, prediction
+
+    except Exception as e:
+
+        st.error(
+            "Model prediction failed."
+        )
+
+        st.exception(e)
+
+        return None, None
+
+
+def show_result(
+    probability,
+    prediction
+):
+
+    if probability is None:
+        return
+
+    st.write("")
+
+    result_left, result_right = st.columns(
+        2
+    )
+
+    with result_left:
+
+        with st.container(border=True):
+
+            st.subheader(
+                "Fraud Probability"
+            )
+
+            st.metric(
+                "Risk Score",
+                f"{probability * 100:.2f}%"
+            )
+
+            st.progress(
+                min(
+                    max(
+                        probability,
+                        0.0
+                    ),
+                    1.0
+                )
+            )
+
+            threshold = float(
+                meta.get(
+                    "threshold",
+                    0.5
+                )
+            )
+
+            st.caption(
+                f"Decision threshold: {threshold:.3f}"
+            )
+
+    with result_right:
+
+        if prediction == 1:
+
+            st.error(
+                "⚠️ HIGH RISK"
+            )
+
+            st.write(
+                "This transaction has been flagged "
+                "as potentially fraudulent."
+            )
+
+        else:
+
+            st.success(
+                "✓ LOW RISK"
+            )
+
+            st.write(
+                "This transaction appears to be normal."
+            )
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+if page == "Dashboard":
+
+    st.subheader(
+        "Overview"
+    )
+
+    c1, c2, c3, c4 = st.columns(
+        4
+    )
+
+    total_transactions = int(
+        stats_data.get(
+            "total",
+            0
+        )
+    )
+
+    fraud_alerts = int(
+        stats_data.get(
+            "fraud",
+            0
+        )
+    )
+
+    average_risk = float(
+        stats_data.get(
+            "risk",
+            0
+        )
+    )
+
+    with c1:
+
+        st.metric(
+            "My Transactions",
+            f"{total_transactions:,}"
+        )
+
+    with c2:
+
+        st.metric(
+            "Fraud Alerts",
+            f"{fraud_alerts:,}"
+        )
+
+    with c3:
+
+        st.metric(
+            "Average Risk",
+            f"{average_risk * 100:.1f}%"
+        )
+
+    with c4:
+
+        st.metric(
+            "Best Model",
+            meta.get(
+                "best_model",
+                "N/A"
+            )
+        )
+
+    st.write("")
+
+    # ========================================================
+    # QUICK CHECK
+    # ========================================================
+
+    with st.container(border=True):
+
+        st.subheader(
+            "⚡ Quick Transaction Check"
+        )
+
+        st.caption(
+            "Enter transaction information to estimate fraud risk."
+        )
+
+        with st.form(
+            "quick_transaction_form"
+        ):
+
+            row1 = st.columns(
+                4
+            )
+
+            amount = row1[0].number_input(
+                "Amount (₹)",
+                min_value=1.0,
+                max_value=500000.0,
+                value=2500.0,
+            )
+
+            avg = row1[1].number_input(
+                "30-day average (₹)",
+                min_value=1.0,
+                max_value=500000.0,
+                value=1500.0,
+            )
+
+            merchant = row1[2].selectbox(
+                "Merchant",
+                [
+                    "Grocery",
+                    "Fuel",
+                    "Dining",
+                    "Shopping",
+                    "Electronics",
+                    "Travel",
+                    "Gaming",
+                    "Cash",
+                ]
+            )
+
+            tx = row1[3].selectbox(
+                "Transaction type",
+                [
+                    "POS",
+                    "Online",
+                    "Contactless",
+                    "ATM",
+                    "Mobile",
+                ]
+            )
+
+            row2 = st.columns(
+                4
+            )
+
+            hour = row2[0].slider(
+                "Transaction hour",
+                0,
+                23,
+                14
+            )
+
+            intl = row2[1].selectbox(
+                "International",
+                [
+                    "No",
+                    "Yes"
+                ]
+            )
+
+            card = row2[2].selectbox(
+                "Card present",
+                [
+                    "Yes",
+                    "No"
+                ]
+            )
+
+            velocity = row2[3].number_input(
+                "Transactions last hour",
+                min_value=0,
+                max_value=50,
+                value=1,
+            )
+
+            submitted = st.form_submit_button(
+                "🔎 Analyze Transaction",
+                type="primary",
+                use_container_width=True,
+            )
+
+    if submitted:
+
+        data = {
+            "amount": amount,
+            "hour": hour,
+            "merchant_category": merchant,
+            "transaction_type": tx,
+            "location_risk": 0.25,
+            "device_trust": 0.80,
+            "international": int(
+                intl == "Yes"
+            ),
+            "card_present": int(
+                card == "Yes"
+            ),
+            "distance_km": 5.0,
+            "velocity_1h": velocity,
+            "avg_amount_30d": avg,
+            "account_age_days": 800,
+            "failed_attempts_24h": 0,
+            "previous_fraud_count": 0,
+        }
+
+        probability, prediction = predict_transaction(
+            data
+        )
+
+        if probability is not None:
+
+            try:
+
+                add(
+                    user["id"],
+                    data,
+                    probability,
+                    prediction
+                )
+
+                st.session_state.result = (
+                    probability,
+                    prediction
+                )
+
+                st.success(
+                    "Transaction analyzed and saved."
+                )
+
+            except Exception as e:
+
+                st.error(
+                    "Prediction completed, but transaction "
+                    "could not be saved."
+                )
+
+                st.exception(e)
+
+    # ========================================================
+    # LAST RESULT
+    # ========================================================
+
+    if st.session_state.result:
+
+        probability, prediction = (
+            st.session_state.result
+        )
+
+        show_result(
+            probability,
+            prediction
+        )
+
+
+# ============================================================
+# ANALYZE TRANSACTION
+# ============================================================
+
+elif page == "Analyze Transaction":
+
+    st.subheader(
+        "🛡️ Analyze Transaction"
+    )
+
+    st.caption(
+        "Provide transaction context to estimate fraud probability."
+    )
+
+    with st.container(border=True):
+
+        with st.form(
+            "full_transaction_form"
+        ):
+
+            row1 = st.columns(
+                4
+            )
+
+            amount = row1[0].number_input(
+                "Amount (₹)",
+                min_value=1.0,
+                max_value=500000.0,
+                value=2500.0,
+            )
+
+            avg = row1[1].number_input(
+                "30-day average (₹)",
+                min_value=1.0,
+                max_value=500000.0,
+                value=1500.0,
+            )
+
+            merchant = row1[2].selectbox(
+                "Merchant category",
+                [
+                    "Grocery",
+                    "Fuel",
+                    "Dining",
+                    "Shopping",
+                    "Electronics",
+                    "Travel",
+                    "Gaming",
+                    "Cash",
+                ]
+            )
+
+            tx = row1[3].selectbox(
+                "Transaction type",
+                [
+                    "POS",
+                    "Online",
+                    "Contactless",
+                    "ATM",
+                    "Mobile",
+                ]
+            )
+
+            row2 = st.columns(
+                4
+            )
+
+            hour = row2[0].slider(
+                "Transaction hour",
+                0,
+                23,
+                14
+            )
+
+            location = row2[1].slider(
+                "Location risk",
+                0.0,
+                1.0,
+                0.20
+            )
+
+            device = row2[2].slider(
+                "Device trust",
+                0.0,
+                1.0,
+                0.85
+            )
+
+            distance = row2[3].number_input(
+                "Distance from usual location (km)",
+                min_value=0.0,
+                max_value=5000.0,
+                value=5.0,
+            )
+
+            row3 = st.columns(
+                4
+            )
+
+            intl = row3[0].selectbox(
+                "International",
+                [
+                    "No",
+                    "Yes"
+                ]
+            )
+
+            card = row3[1].selectbox(
+                "Card present",
+                [
+                    "Yes",
+                    "No"
+                ]
+            )
+
+            velocity = row3[2].number_input(
+                "Transactions last hour",
+                min_value=0,
+                max_value=50,
+                value=1,
+            )
+
+            age = row3[3].number_input(
+                "Account age (days)",
+                min_value=1,
+                max_value=10000,
+                value=800,
+            )
+
+            row4 = st.columns(
+                3
+            )
+
+            failed = row4[0].number_input(
+                "Failed attempts in 24h",
+                min_value=0,
+                max_value=30,
+                value=0,
+            )
+
+            previous = row4[1].number_input(
+                "Previous fraud alerts",
+                min_value=0,
+                max_value=50,
+                value=0,
+            )
+
+            submitted = row4[2].form_submit_button(
+                "🛡️ Check Fraud Risk",
+                type="primary",
+                use_container_width=True,
+            )
+
+    if submitted:
+
+        data = {
+            "amount": amount,
+            "hour": hour,
+            "merchant_category": merchant,
+            "transaction_type": tx,
+            "location_risk": location,
+            "device_trust": device,
+            "international": int(
+                intl == "Yes"
+            ),
+            "card_present": int(
+                card == "Yes"
+            ),
+            "distance_km": distance,
+            "velocity_1h": velocity,
+            "avg_amount_30d": avg,
+            "account_age_days": age,
+            "failed_attempts_24h": failed,
+            "previous_fraud_count": previous,
+        }
+
+        probability, prediction = predict_transaction(
+            data
+        )
+
+        if probability is not None:
+
+            try:
+
+                add(
+                    user["id"],
+                    data,
+                    probability,
+                    prediction
+                )
+
+                st.session_state.result = (
+                    probability,
+                    prediction
+                )
+
+                st.success(
+                    "Analysis complete. Transaction saved."
+                )
+
+                show_result(
+                    probability,
+                    prediction
+                )
+
+            except Exception as e:
+
+                st.error(
+                    "Analysis completed, but transaction "
+                    "could not be saved."
+                )
+
+                st.exception(e)
+
+
+# ============================================================
+# TRANSACTION HISTORY
+# ============================================================
+
+elif page == "Transaction History":
+
+    st.subheader(
+        "📋 My Transaction History"
+    )
+
+    if hist:
+
+        h = pd.DataFrame(
+            hist
+        )
+
+        if "prediction" in h.columns:
+
+            h["Status"] = h[
+                "prediction"
+            ].map(
+                {
+                    0: "✓ Normal",
+                    1: "⚠ Fraud"
+                }
+            )
+
+        if "probability" in h.columns:
+
+            h["Risk"] = h[
+                "probability"
+            ].apply(
+                lambda x:
+                f"{float(x) * 100:.2f}%"
+            )
+
+        possible_columns = [
+            "id",
+            "created_at",
+            "amount",
+            "merchant_category",
+            "transaction_type",
+            "Risk",
+            "Status",
+        ]
+
+        display_columns = [
+            col
+            for col in possible_columns
+            if col in h.columns
+        ]
+
+        if display_columns:
+
+            st.dataframe(
+                h[display_columns],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        else:
+
+            st.dataframe(
+                h,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.write("")
+
+        csv_data = h.to_csv(
+            index=False
+        )
+
+        st.download_button(
+            "⬇ Download my history CSV",
+            csv_data,
+            "my_transactions.csv",
+            "text/csv",
+            use_container_width=True,
+        )
+
+    else:
+
+        st.info(
+            "No transactions yet. "
+            "Analyze your first transaction."
+        )
+
+
+# ============================================================
+# PROFILE
+# ============================================================
+
+elif page == "My Profile":
+
+    st.subheader(
+        "👤 My Profile"
+    )
+
+    name = (
+        user.get("full_name")
+        or user.get("username")
+        or "User"
+    )
+
+    email = user.get(
+        "email",
+        ""
+    )
+
+    username = user.get(
+        "username",
+        ""
+    )
+
+    provider = user.get(
+        "auth_provider",
+        "local"
+    )
+
+    with st.container(border=True):
+
+        st.markdown(
+            f"### {name}"
+        )
+
+        if email:
+
+            st.caption(
+                email
+            )
+
+        st.divider()
+
+        p1, p2 = st.columns(
+            2
+        )
+
+        with p1:
+
+            st.write(
+                "**Username**"
+            )
+
+            st.write(
+                username or "Not available"
+            )
+
+        with p2:
+
+            st.write(
+                "**Authentication**"
+            )
+
+            st.write(
+                provider.title()
+            )
+
+    st.write("")
+
+    with st.container(border=True):
+
+        st.subheader(
+            "Edit profile"
+        )
+
+        with st.form(
+            "profile_update_form"
+        ):
+
+            full_name = st.text_input(
+                "Full name",
+                value=user.get(
+                    "full_name"
+                ) or "",
+            )
+
+            email = st.text_input(
+                "Email",
+                value=user.get(
+                    "email"
+                ) or "",
+            )
+
+            st.text_input(
+                "Username",
+                value=user.get(
+                    "username"
+                ) or "",
+                disabled=True,
+            )
+
+            submitted = st.form_submit_button(
+                "Save profile",
+                type="primary",
+            )
+
+        if submitted:
+
+            full_name = full_name.strip()
+            email = email.strip()
+
+            if not full_name:
+
+                st.warning(
+                    "Full name cannot be empty."
+                )
+
+            elif not email:
+
+                st.warning(
+                    "Email cannot be empty."
+                )
+
+            else:
+
+                try:
+
+                    success = update(
+                        user["id"],
+                        full_name,
+                        email,
+                    )
+
+                    if success:
+
+                        st.session_state.user[
+                            "full_name"
+                        ] = full_name
+
+                        st.session_state.user[
+                            "email"
+                        ] = email
+
+                        st.success(
+                            "Profile updated successfully."
+                        )
+
+                        st.rerun()
+
+                    else:
+
+                        st.error(
+                            "Could not update profile. "
+                            "Email may already be in use."
+                        )
+
+                except Exception as e:
+
+                    st.error(
+                        "Profile update failed."
+                    )
+
+                    st.exception(e)
+
+
+# ============================================================
+# ANALYTICS
+# ============================================================
+
+elif page == "Analytics":
+
+    st.subheader(
+        "📈 Personal Analytics"
+    )
+
+    if not hist:
+
+        st.info(
+            "Analyze transactions to populate your analytics."
+        )
+
+    else:
+
+        h = pd.DataFrame(
+            hist
+        )
+
+        if "probability" not in h.columns:
+
+            st.warning(
+                "Risk probability data is not available."
+            )
+
+        else:
+
+            c1, c2 = st.columns(
+                2
+            )
+
+            with c1:
+
+                fig = px.histogram(
+                    h,
+                    x="probability",
+                    nbins=20,
+                    title="Risk Distribution",
+                )
+
+                fig.update_layout(
+                    template="plotly_white",
+                    xaxis_title="Fraud Probability",
+                    yaxis_title="Transactions",
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+            with c2:
+
+                if "merchant_category" in h.columns:
+
+                    merchant_risk = (
+                        h.groupby(
+                            "merchant_category",
+                            as_index=False,
+                        )[
+                            "probability"
+                        ]
+                        .mean()
+                    )
+
+                    fig = px.bar(
+                        merchant_risk,
+                        x="merchant_category",
+                        y="probability",
+                        title="Average Risk by Merchant",
+                    )
+
+                    fig.update_layout(
+                        template="plotly_white",
+                        yaxis_title="Average Probability",
+                        xaxis_title="Merchant",
+                    )
+
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                    )
+
+            if "prediction" in h.columns:
+
+                normal_count = int(
+                    (
+                        h["prediction"] == 0
+                    ).sum()
+                )
+
+                fraud_count = int(
+                    (
+                        h["prediction"] == 1
+                    ).sum()
+                )
+
+                fig = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=[
+                                "Normal",
+                                "Fraud"
+                            ],
+                            values=[
+                                normal_count,
+                                fraud_count
+                            ],
+                            hole=0.55,
+                        )
+                    ]
+                )
+
+                fig.update_layout(
+                    title="Transaction Risk Breakdown",
+                    template="plotly_white",
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+
+# ============================================================
+# MODEL PERFORMANCE
+# ============================================================
+
+elif page == "Model Performance":
+
+    st.subheader(
+        "🤖 Model Performance"
+    )
+
+    st.caption(
+        "Evaluation metrics from the project's test dataset."
+    )
+
+    models_data = meta.get(
+        "models",
+        {}
+    )
+
+    if models_data:
+
+        rows = [
+            {
+                "Model": name,
+                **metrics
+            }
+            for name, metrics
+            in models_data.items()
+        ]
+
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    else:
+
+        st.info(
+            "Model comparison metrics are not available."
+        )
+
+    st.write("")
+
+    test_metrics = meta.get(
+        "test_metrics",
+        {}
+    )
+
+    if test_metrics:
+
+        metric_items = [
+            (
+                "PR-AUC",
+                test_metrics.get(
+                    "pr_auc"
+                )
+            ),
+            (
+                "ROC-AUC",
+                test_metrics.get(
+                    "roc_auc"
+                )
+            ),
+            (
+                "Precision",
+                test_metrics.get(
+                    "precision"
+                )
+            ),
+            (
+                "Recall",
+                test_metrics.get(
+                    "recall"
+                )
+            ),
+            (
+                "F1",
+                test_metrics.get(
+                    "f1"
+                )
+            ),
+        ]
+
+        metric_cols = st.columns(
+            5
+        )
+
+        for col, (label, value) in zip(
+            metric_cols,
+            metric_items
+        ):
+
+            if value is not None:
+
+                col.metric(
+                    label,
+                    f"{float(value):.4f}"
+                )
+
+    st.write("")
+
+    best_model = meta.get(
+        "best_model",
+        "N/A"
+    )
+
+    threshold = float(
+        meta.get(
+            "threshold",
+            0.5
+        )
+    )
+
+    with st.container(border=True):
+
+        st.subheader(
+            "Model Configuration"
+        )
+
+        c1, c2 = st.columns(
+            2
+        )
+
+        with c1:
+
+            st.write(
+                "**Best Model**"
+            )
+
+            st.info(
+                best_model
+            )
+
+        with c2:
+
+            st.write(
+                "**Decision Threshold**"
+            )
+
+            st.info(
+                f"{threshold:.3f}"
+            )
+
+
+# ============================================================
+# ABOUT
+# ============================================================
+
+elif page == "About":
+
+    st.subheader(
+        "ℹ️ About FraudGuard AI"
+    )
+
+    with st.container(border=True):
+
+        st.title(
+            "🛡️ FraudGuard AI"
+        )
+
+        st.write(
+            "Human-readable credit card fraud detection "
+            "powered by machine learning."
+        )
+
+        st.divider()
+
+        c1, c2 = st.columns(
+            2
+        )
+
+        with c1:
+
+            st.write(
+                "**Machine Learning**"
+            )
+
+            st.write(
+                "Logistic Regression + Random Forest + XGBoost"
+            )
+
+            st.write("")
+
+            st.write(
+                "**Database**"
+            )
+
+            st.write(
+                "SQLite"
+            )
+
+            st.write("")
+
+            st.write(
+                "**Authentication**"
+            )
+
+            st.write(
+                "Google OIDC + bcrypt-secured local accounts"
+            )
+
+        with c2:
+
+            st.write(
+                "**Best Model**"
+            )
+
+            st.write(
+                meta.get(
+                    "best_model",
+                    "N/A"
+                )
+            )
+
+            st.write("")
+
+            st.write(
+                "**Decision Threshold**"
+            )
+
+            st.write(
+                f"{float(meta.get('threshold', 0.5)):.3f}"
+            )
+
+            st.write("")
+
+            st.write(
+                "**Purpose**"
+            )
+
+            st.write(
+                "Analyze transaction behavior and estimate "
+                "fraud probability using meaningful transaction "
+                "features instead of exposing anonymized "
+                "V1–V28 dataset columns."
+            )
+
+    st.write("")
+
+    st.caption(
+        "FraudGuard AI • Secure Transaction Intelligence"
+    )
