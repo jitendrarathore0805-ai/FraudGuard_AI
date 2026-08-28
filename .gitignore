@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+data/*.csv
+models/*.pkl
+models/*.json
+fraudguard.db
+.streamlit/secrets.toml
