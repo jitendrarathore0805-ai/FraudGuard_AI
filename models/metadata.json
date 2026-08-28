@@ -1,0 +1,58 @@
+{
+  "feature_columns": [
+    "amount",
+    "hour",
+    "merchant_category",
+    "transaction_type",
+    "location_risk",
+    "device_trust",
+    "international",
+    "card_present",
+    "distance_km",
+    "velocity_1h",
+    "avg_amount_30d",
+    "account_age_days",
+    "failed_attempts_24h",
+    "previous_fraud_count"
+  ],
+  "best_model": "XGBoost",
+  "threshold": 0.575,
+  "dataset_rows": 80000,
+  "fraud_transactions": 13505,
+  "normal_transactions": 66495,
+  "fraud_percentage": 16.88125,
+  "models": {
+    "Logistic Regression": {
+      "validation_pr_auc": 0.4038586970609779,
+      "validation_f1": 0.4439114391143911,
+      "threshold": 0.5499999999999999
+    },
+    "Random Forest": {
+      "validation_pr_auc": 0.40968295970601004,
+      "validation_f1": 0.4518085336798787,
+      "threshold": 0.4149999999999999
+    },
+    "XGBoost": {
+      "validation_pr_auc": 0.45505039396882496,
+      "validation_f1": 0.48062638024493076,
+      "threshold": 0.575
+    }
+  },
+  "test_metrics": {
+    "pr_auc": 0.48872427816067127,
+    "roc_auc": 0.7942315789473683,
+    "precision": 0.40872111942726974,
+    "recall": 0.6202469135802469,
+    "f1": 0.49274225186347587,
+    "confusion_matrix": [
+      [
+        8158,
+        1817
+      ],
+      [
+        769,
+        1256
+      ]
+    ]
+  }
+}
