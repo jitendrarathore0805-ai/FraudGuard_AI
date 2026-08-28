@@ -18,12 +18,6 @@ from database import (
     update,
 )
 
-
-# ============================================================
-# PAGE CONFIG
-# IMPORTANT: This must come before other Streamlit commands
-# ============================================================
-
 st.set_page_config(
     page_title="FraudGuard AI",
     page_icon="🛡️",
